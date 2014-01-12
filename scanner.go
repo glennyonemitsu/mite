@@ -100,6 +100,7 @@ const (
 	TokAssign
 	TokIndent
 	TokDedent
+	TokNodent
 )
 
 var tokenString = map[rune]string{
@@ -117,6 +118,7 @@ var tokenString = map[rune]string{
 	TokComma:	"Comma",
 	TokIndent:	  "Indent",
 	TokDedent:	  "Dedent",
+	TokNodent:	  "Nodent",
 }
 
 // TokenString returns a printable string for a token or Unicode character.
@@ -631,6 +633,8 @@ func (s *Scanner) Scan() []rune {
 					break
 				}
 			}
+		} else if s.indentLevel == s.lastIndentLevel {
+			runes = append(runes, TokNodent)
 		}
 		s.indentChecked = true
 		if len(runes) > 0 {
