@@ -121,12 +121,14 @@ func (p *Parser) pushNode(node *Node) {
 }
 
 func (p *Parser) processToken(tok rune, text string) {
+	fmt.Printf("isattr %s assigned %s name %s val %s\n", p.isAttr, p.attrAssigned, p.attrName, p.attrValue)
 	switch tok {
 	case TokWord, TokComma:
 		if p.node.tag == "" {
 			p.node.tag = text
 			// found the tag, now check for attributes
 			p.isAttr = true
+			p.attrAssigned = false
 		} else if p.isAttr {
 			if p.attrAssigned {
 				if _, found := p.node.attrs[p.attrName]; found {
@@ -140,12 +142,41 @@ func (p *Parser) processToken(tok rune, text string) {
 				p.attrName = ""
 				p.attrValue = ""
 				p.attrAssigned = false
+				p.node.attrString = ""
 			} else if p.attrName == "" {
 				p.node.attrString += text
 				p.attrName = text
 			} else {
 				p.node.text += p.node.attrString
 				p.node.text += text
+				p.node.attrString = ""
+				p.isAttr = false
+				p.attrAssigned = false
+				p.attrName = ""
+				p.attrValue = ""
+			}
+		} else {
+			p.node.text += text
+		}
+	case TokString:
+		if p.isAttr {
+			if p.attrAssigned {
+				if _, found := p.node.attrs[p.attrName]; found {
+					p.node.attrs[p.attrName] += " "
+					p.node.attrs[p.attrName] += text[1:len(text)-1]
+				} else {
+					p.node.attrs[p.attrName] = text[1:len(text)-1]
+				}
+
+				// reset to look for a new attribute assignment
+				p.attrName = ""
+				p.attrValue = ""
+				p.attrAssigned = false
+				p.node.attrString = ""
+			} else if p.attrName != "" {
+				// TODO using string in attrName shouldn't be allowed
+				p.node.text += p.node.attrString
+				p.node.text += text[1:len(text)-1]
 				p.node.attrString = ""
 				p.isAttr = false
 				p.attrName = ""
@@ -185,6 +216,9 @@ func (p *Parser) processToken(tok rune, text string) {
 		p.isIndent = false
 		p.isDedent = true
 		p.dedentCount += 1
+	case TokNodent:
+		p.isIndent = false
+		p.isDedent = false
 	case TokNewLine:
 		// up to this point a node has been constructed but not appended to the
 		// output
