@@ -158,6 +158,7 @@ type Scanner struct {
 	tokEnd int          // token text tail end (srcBuf index)
 
 	// indentLevel is copied to lastIndentLevel and reset on every TokNewLine found
+	indentChecked bool // has indent level been checked after new lines?
 	indentLevel int // line indent level of currently scanned line
 	lastIndentLevel int // line indent level of previous line for indent/dedent calculation
 
@@ -211,6 +212,7 @@ func (s *Scanner) Init(src io.Reader) *Scanner {
 	// (required for first call to next()).
 	s.tokPos = -1
 
+	s.indentChecked = false
 	s.indentLevel = -1
 	s.lastIndentLevel = 0
 	s.indents = []int{}
@@ -496,16 +498,17 @@ func (s *Scanner) scanString(quote rune) (n int) {
 	return
 }
 
-func (s *Scanner) scanIndent(ch rune) rune {
+func (s *Scanner) scanIndent(ch rune) (rune, int) {
+	level := 0
 	for ch == ' ' || ch == '\t' {
 		if ch == ' ' {
-			s.indentLevel += 1
+			level += 1
 		} else if ch == '\t' {
-			s.indentLevel += tabIndentValue
+			level += tabIndentValue
 		}
 		ch = s.next()
 	}
-	return ch
+	return ch, level
 }
 
 func (s *Scanner) scanRawString() {
@@ -580,8 +583,6 @@ func (s *Scanner) scanNewLine(ch rune) rune {
 func (s *Scanner) Scan() []rune {
 	ch := s.Peek()
 
-	runes := []rune{}
-
 	// reset token text position
 	s.tokPos = -1
 	s.Line = 0
@@ -607,6 +608,37 @@ func (s *Scanner) Scan() []rune {
 
 	// determine token value
 	tok := ch
+
+	runes := []rune{}
+
+	if s.Mode&ScanIndents != 0 && s.indentLevel == -1 && !s.indentChecked {
+		// if indentLevel is -1, treat it as a newline which requires level checking
+		// whitespace is significant ONLY for indents
+		ch, s.indentLevel = s.scanIndent(ch)
+		if s.indentLevel > s.lastIndentLevel {
+			runes = append(runes, TokIndent)
+			// for indents simply add to the indents array
+			s.indents = append(s.indents, s.indentLevel)
+		} else if s.indentLevel < s.lastIndentLevel {
+			// for dedents keep popping off indents array until end and append to 
+			// runes[]rune since more than one TokDedent is possible
+			for len(s.indents) > 0 {
+				// compare last (highest) indent level with this line's level
+				if s.indents[len(s.indents) - 1] > s.indentLevel {
+					s.indents = s.indents[0: len(s.indents) - 1]
+					runes = append(runes, TokDedent)
+				} else {
+					break
+				}
+			}
+		}
+		s.indentChecked = true
+		if len(runes) > 0 {
+			s.endScan(ch)
+			return runes
+		}
+	}
+
 	switch {
 	case unicode.IsLetter(ch) || ch == '_':
 		if s.Mode&ScanWords != 0 {
@@ -633,29 +665,7 @@ func (s *Scanner) Scan() []rune {
 			tok = TokComma
 			ch = s.next()
 		case ' ', '\t':
-			// if indentLevel is -1, treat it as a newline which requires level checking
-			// whitespace is significant ONLY for indents
-			if s.Mode&ScanIndents != 0 && s.indentLevel == -1 {
-				s.indentLevel = 0
-				ch = s.scanIndent(ch)
-				if s.indentLevel > s.lastIndentLevel {
-					tok = TokIndent
-					// for indents simply add to the indents array
-					s.indents = append(s.indents, s.indentLevel)
-				} else if s.indentLevel < s.lastIndentLevel {
-					// for dedents keep popping off indents array until end and append to 
-					// runes[]rune since more than one token is possible
-					for len(s.indents) > 0 {
-						// compare last (highest) indent level with this line's level
-						if s.indents[len(s.indents) - 1] < s.indentLevel {
-							s.indents = s.indents[0: len(s.indents) - 1]
-							runes = append(runes, TokDedent)
-						} else {
-							break
-						}
-					}
-				}
-			} else if s.Mode&ScanWhitespace != 0 {
+			if s.Mode&ScanWhitespace != 0 {
 				tok = TokWhitespace
 				ch = s.scanWhitespace()
 			} else {
@@ -667,8 +677,13 @@ func (s *Scanner) Scan() []rune {
 				tok = TokNewLine
 
 				// prepare for new indent/dedent calculation
-				s.lastIndentLevel = s.indentLevel
+				if s.indentLevel == -1 {
+					s.lastIndentLevel = 0
+				} else {
+					s.lastIndentLevel = s.indentLevel
+				}
 				s.indentLevel = -1
+				s.indentChecked = false
 			}
 			ch = s.next()
 		case '"', '\'':
@@ -701,14 +716,18 @@ func (s *Scanner) Scan() []rune {
 		}
 	}
 
-	// end of token text
-	s.tokEnd = s.srcPos - s.lastCharLen
-
-	s.ch = ch
+	s.endScan(ch)
 	if len(runes) == 0 {
 		runes = append(runes, tok)
 	}
 	return runes
+}
+
+func (s *Scanner) endScan(ch rune) {
+	// end of token text
+	s.tokEnd = s.srcPos - s.lastCharLen
+
+	s.ch = ch
 }
 
 // Pos returns the position of the character immediately after
