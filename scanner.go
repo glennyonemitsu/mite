@@ -78,8 +78,9 @@ const (
 	ScanComments   = 1 << -TokComment
 	ScanNewLines   = 1 << -TokNewLine
 	ScanCommas	   = 1 << -TokComma
+	ScanWhitespace = 1 << -TokWhitespace
 	ScanIndents	   = 1 << -TokIndent
-	GoTokens       = ScanWords | ScanFloats | ScanChars | ScanStrings | ScanRawStrings | ScanComments | ScanNewLines | ScanCommas | ScanIndents
+	GoTokens       = ScanWords | ScanFloats | ScanChars | ScanStrings | ScanRawStrings | ScanComments | ScanNewLines | ScanCommas | ScanIndents | ScanWhitespace
 )
 
 // The result of Scan is one of the following tokens or a Unicode character.
@@ -94,6 +95,7 @@ const (
 	TokComment
 	TokNewLine
 	TokComma
+	TokWhitespace
 	TokIndent
 	TokDedent
 )
@@ -108,7 +110,8 @@ var tokenString = map[rune]string{
 	TokRawString: "RawString",
 	TokComment:   "Comment",
 	TokNewLine:   "NewLine",
-	TokComma:		"Comma",
+	TokWhitespace:	"Whitespace",
+	TokComma:	"Comma",
 	TokIndent:	  "Indent",
 	TokDedent:	  "Dedent",
 }
@@ -120,11 +123,6 @@ func TokenString(tok rune) string {
 	}
 	return fmt.Sprintf("%q", string(tok))
 }
-
-// GoWhitespace is the default value for the Scanner's Whitespace field.
-// Its value selects Go's white space characters.
-//const GoWhitespace = 1<<'\t' | 1<<'\n' | 1<<'\r' | 1<<' '
-const GoWhitespace = 1<<'\t' | 1<<'\n' | 1<<'\r' | 1<<' '
 
 const bufLen = 1024 // at least utf8.UTFMax
 
@@ -179,12 +177,6 @@ type Scanner struct {
 	// changed at any time.
 	Mode uint
 
-	// The Whitespace field controls which characters are recognized
-	// as white space. To recognize a character ch <= ' ' as white space,
-	// set the ch'th bit in Whitespace (the Scanner's behavior is undefined
-	// for values ch > ' '). The field may be changed at any time.
-	Whitespace uint64
-
 	// Start position of most recently scanned token; set by Scan.
 	// Calling Init or Next invalidates the position (Line == 0).
 	// The Filename field is always left untouched by the Scanner.
@@ -195,8 +187,7 @@ type Scanner struct {
 }
 
 // Init initializes a Scanner with a new source and returns s.
-// Error is set to nil, ErrorCount is set to 0, Mode is set to GoTokens,
-// and Whitespace is set to GoWhitespace.
+// Error is set to nil, ErrorCount is set to 0, Mode is set to GoTokens
 func (s *Scanner) Init(src io.Reader) *Scanner {
 	s.src = src
 
@@ -228,7 +219,6 @@ func (s *Scanner) Init(src io.Reader) *Scanner {
 	s.Error = nil
 	s.ErrorCount = 0
 	s.Mode = GoTokens
-	s.Whitespace = GoWhitespace
 	s.Line = 0 // invalidate token position
 
 	return s
@@ -554,6 +544,17 @@ func (s *Scanner) scanComment(ch rune) rune {
 	return ch
 }
 
+func (s *Scanner) scanWhitespace() rune {
+	ch := s.next()
+	for {
+		if ch != ' ' && ch != '\t' {
+			break
+		}
+		ch = s.next()
+	}
+	return ch
+}
+
 func (s *Scanner) scanNewLine(ch rune) rune {
 	nc := s.Peek()
 
@@ -648,6 +649,9 @@ func (s *Scanner) Scan() []rune {
 						}
 					}
 				}
+			} else if s.Mode&ScanWhitespace != 0 {
+				tok = TokWhitespace
+				ch = s.scanWhitespace()
 			} else {
 				ch = s.next()
 			}
@@ -663,7 +667,7 @@ func (s *Scanner) Scan() []rune {
 			ch = s.next()
 		case '"', '\'':
 			if s.Mode&ScanStrings != 0 {
-				s.scanString('"')
+				s.scanString(ch)
 				tok = TokString
 			}
 			ch = s.next()
