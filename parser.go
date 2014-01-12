@@ -99,14 +99,21 @@ func (p *Parser) lastNode() *Node {
 }
 
 func (p *Parser) outputNode(node *Node) {
-	p.output += "<" + node.tag
-	if len(node.attrs) > 0 {
-		for k, v := range node.attrs {
-			p.output += fmt.Sprintf(" %s='%s'", k, v)
+	if node.tag != "" {
+		p.output += "<" + node.tag
+		if len(node.attrs) > 0 {
+			for k, v := range node.attrs {
+				p.output += fmt.Sprintf(" %s='%s'", k, v)
+			}
 		}
+		p.output += ">"
+		p.output += node.text
 	}
-	p.output += ">"
-	p.output += node.text
+}
+func (p *Parser) pushNode(node *Node) {
+	if p.node.tag != "" {
+		p.stack = append(p.stack, p.node)
+	}
 }
 
 func (p *Parser) processToken(tok rune, text string) {
@@ -188,7 +195,7 @@ func (p *Parser) processToken(tok rune, text string) {
 			p.closeLastNode()
 		}
 		p.outputNode(p.node)
-		p.stack = append(p.stack, p.node)
+		p.pushNode(p.node)
 
 		// reset
 		p.node = p.newNode()
@@ -201,10 +208,8 @@ func (p *Parser) processToken(tok rune, text string) {
 	case TokEOF:
 		// since p.node is never on the stack until TokNewLine we push to the stack
 		// in this scenario
-		if p.node.tag != "" {
-			p.stack = append(p.stack, p.node)
-			p.outputNode(p.node)
-		}
+		p.pushNode(p.node)
+		p.outputNode(p.node)
 		// close the remaining nodes in the stack 
 		for len(p.stack) > 0 {
 			p.closeLastNode()
