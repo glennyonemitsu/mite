@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	//"fmt"
 	"unicode/utf8"
 )
 
@@ -47,7 +47,6 @@ func (p *Parser) Output() string {
 		for _, token := range tokens {
 			text = p.Scanner.TokenText()
 			p.processToken(token, text)
-			fmt.Println(TokenString(token))
 		}
 		if tokens[0] == TokEOF {
 			break
@@ -85,7 +84,10 @@ func (p *Parser) processToken(tok rune, text string) {
 			p.node.text += text
 		}
 	case TokWhitespace:
-		p.node.text += text
+		// skip initial whitespace for text
+		if p.node.text != "" {
+			p.node.text += text
+		}
 	case TokIndent:
 		p.isIndent = true
 		p.isDedent = false
@@ -96,12 +98,11 @@ func (p *Parser) processToken(tok rune, text string) {
 	case TokNewLine:
 		// up to this point a node has been constructed but not appended to the
 		// output
-
-		fmt.Println(p.node)
 		if p.isDedent {
 			// for dedents, pop off the stack and close the node
-			for i := 0; i < p.dedentCount; i += 1 {
+			for p.dedentCount > 0 {
 				p.closeLastNode()
+				p.dedentCount -= 1
 			}
 			// closing one more time because this new node replaces the top node in the
 			// stack
