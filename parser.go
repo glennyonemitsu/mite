@@ -9,6 +9,11 @@ type Node struct {
 	tag string
 	attrs map[string]string
 	text string
+
+	// dumb appended string while attribute assignment is still being determined
+	// this is used if it turns out tokens are NOT part of an attribute assignment
+	// and the string (with whitespace if any) gets used as the node's text
+	attrString string
 }
 
 type Parser struct {
@@ -38,10 +43,6 @@ type Parser struct {
 	attrName string
 	attrValue string
 	attrAssigned bool
-	// dumb appended string while attribute assignment is still being determined
-	// this is used if it turns out tokens are NOT part of an attribute assignment
-	// and the string (with whitespace if any) gets appended to the node text
-	attrString string
 
 	node *Node
 }
@@ -59,7 +60,6 @@ func (p *Parser) Output() string {
 	p.attrName = ""
 	p.attrValue = ""
 	p.attrAssigned = false
-	p.attrString = ""
 	p.dedentCount = 0
 	p.node = p.newNode()
 
@@ -107,7 +107,11 @@ func (p *Parser) outputNode(node *Node) {
 			}
 		}
 		p.output += ">"
-		p.output += node.text
+		if node.text != "" {
+			p.output += node.text
+		} else {
+			p.output += node.attrString
+		}
 	}
 }
 func (p *Parser) pushNode(node *Node) {
@@ -137,11 +141,12 @@ func (p *Parser) processToken(tok rune, text string) {
 				p.attrValue = ""
 				p.attrAssigned = false
 			} else if p.attrName == "" {
-				p.attrString += text
+				p.node.attrString += text
 				p.attrName = text
 			} else {
-				p.node.text += p.attrString
+				p.node.text += p.node.attrString
 				p.node.text += text
+				p.node.attrString = ""
 				p.isAttr = false
 				p.attrName = ""
 				p.attrValue = ""
@@ -154,19 +159,20 @@ func (p *Parser) processToken(tok rune, text string) {
 		if p.isAttr {
 			if p.attrName != "" && p.attrValue == "" {
 				p.attrAssigned = true
-				p.attrString += text
+				p.node.attrString += text
 			}
 			if p.attrName == "" || p.attrValue != "" {
 				p.attrAssigned = false
 				p.isAttr = false
-				p.node.text += p.attrString
+				p.node.text += p.node.attrString
+				p.node.attrString = ""
 			}
 		} else {
 			p.node.text += text
 		}
 	case TokWhitespace:
-		if p.isAttr && p.attrString != "" {
-			p.attrString += text
+		if p.isAttr && p.node.attrString != "" {
+			p.node.attrString += text
 
 		// skip initial whitespace for text
 		} else if p.node.text != "" {
@@ -204,7 +210,6 @@ func (p *Parser) processToken(tok rune, text string) {
 		p.isAttr = false
 		p.attrName = ""
 		p.attrValue = ""
-		p.attrString = ""
 	case TokEOF:
 		// since p.node is never on the stack until TokNewLine we push to the stack
 		// in this scenario
