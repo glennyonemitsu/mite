@@ -79,8 +79,9 @@ const (
 	ScanNewLines   = 1 << -TokNewLine
 	ScanCommas	   = 1 << -TokComma
 	ScanWhitespace = 1 << -TokWhitespace
+	ScanAssigns	   = 1 << -TokAssign
 	ScanIndents	   = 1 << -TokIndent
-	GoTokens       = ScanWords | ScanFloats | ScanChars | ScanStrings | ScanRawStrings | ScanComments | ScanNewLines | ScanCommas | ScanIndents | ScanWhitespace
+	GoTokens       = ScanWords | ScanFloats | ScanChars | ScanStrings | ScanRawStrings | ScanComments | ScanNewLines | ScanCommas | ScanIndents | ScanWhitespace | ScanAssigns
 )
 
 // The result of Scan is one of the following tokens or a Unicode character.
@@ -96,6 +97,7 @@ const (
 	TokNewLine
 	TokComma
 	TokWhitespace
+	TokAssign
 	TokIndent
 	TokDedent
 )
@@ -111,6 +113,7 @@ var tokenString = map[rune]string{
 	TokComment:   "Comment",
 	TokNewLine:   "NewLine",
 	TokWhitespace:	"Whitespace",
+	TokAssign:	"Assign",
 	TokComma:	"Comma",
 	TokIndent:	  "Indent",
 	TokDedent:	  "Dedent",
@@ -623,6 +626,9 @@ func (s *Scanner) Scan() []rune {
 		}
 	default:
 		switch ch {
+		case '=':
+			tok = TokAssign
+			ch = s.next()
 		case ',':
 			tok = TokComma
 			ch = s.next()
