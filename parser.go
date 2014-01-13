@@ -112,6 +112,10 @@ func (p *Parser) dedentFromStack() {
 	if n != nil && n.Type != NodeRoot {
 		p.output += n.OpenString()
 		p.trimOutput()
+		// newlines in NodeText have spaces. Adding one here for consistency
+		if n.Type == NodeText {
+			p.output += " "
+		}
 		p.output += n.CloseString()
 		p.popNode()
 	}
