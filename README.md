@@ -6,22 +6,26 @@ Example:
 
     html
         body
-            h1 class='really big' Hello, World!
+            h1 class='intro' Hello, World!
+            p ` class='not an attribute' but text due to the back tick
             div
-                p This is a mite template
+                `	This is a mite template that can also handle multiple lines 
+                    thanks to the backtick in an indented "tag"
 
 
 Output (indented for display):
 
     <html>
         <body>
-            <h1 class='really big'>
+            <h1 class='intro'>
                 Hello, World!
             </h1>
+            <p>
+                class='not an attribute' but text due to the back tick
+            </p>
             <div>
-                <p>
-                    This is a mite template
-                </p>
+                This is a mite template that can also handle multiple lines 
+                thanks to the backtick in an indented "tag"
             </div>
         </body>
     </html>
@@ -38,6 +42,5 @@ most likely will.
 - class and id literals `.row#nav`
 - variables
 - flow control, iteration, and assignment
-- explicit string support with backticks
 - filter blocks of text (example: for markdown)
 - function calling
