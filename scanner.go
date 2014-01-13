@@ -553,14 +553,10 @@ func (s *Scanner) scanWhitespace() rune {
 }
 
 func (s *Scanner) scanNewLine(ch rune) rune {
-	nc := s.Peek()
-
-	// if \r\n or \n\r combination is found, treat as single newline and advance
-	// the pointer
-	if (ch == '\n' && nc == '\r') || (ch == '\r' && nc == '\n') {
+	// keep scanning to find as many newlines in a row
+	for ch == '\n' || ch == '\r' {
 		ch = s.next()
 	}
-
 	return ch
 }
 
