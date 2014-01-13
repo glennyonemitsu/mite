@@ -74,14 +74,14 @@ const (
 	ScanFloats     = 1 << -TokFloat // includes Ints
 	ScanChars      = 1 << -TokChar
 	ScanStrings    = 1 << -TokString
-	ScanRawStrings = 1 << -TokRawString
+	ScanStringFlags = 1 << -TokStringFlag
 	ScanComments   = 1 << -TokComment
 	ScanNewLines   = 1 << -TokNewLine
 	ScanCommas	   = 1 << -TokComma
 	ScanWhitespace = 1 << -TokWhitespace
 	ScanAssigns	   = 1 << -TokAssign
 	ScanIndents	   = 1 << -TokIndent
-	GoTokens       = ScanWords | ScanFloats | ScanChars | ScanStrings | ScanRawStrings | ScanComments | ScanNewLines | ScanCommas | ScanIndents | ScanWhitespace | ScanAssigns
+	GoTokens       = ScanWords | ScanFloats | ScanChars | ScanStrings | ScanStringFlags | ScanComments | ScanNewLines | ScanCommas | ScanIndents | ScanWhitespace | ScanAssigns
 )
 
 // The result of Scan is one of the following tokens or a Unicode character.
@@ -92,7 +92,7 @@ const (
 	TokFloat
 	TokChar
 	TokString
-	TokRawString
+	TokStringFlag
 	TokComment
 	TokNewLine
 	TokComma
@@ -110,7 +110,7 @@ var tokenString = map[rune]string{
 	TokFloat:     "Float",
 	TokChar:      "Char",
 	TokString:    "String",
-	TokRawString: "RawString",
+	TokStringFlag: "StringFlag",
 	TokComment:   "Comment",
 	TokNewLine:   "NewLine",
 	TokWhitespace:	"Whitespace",
@@ -513,17 +513,6 @@ func (s *Scanner) scanIndent(ch rune) (rune, int) {
 	return ch, level
 }
 
-func (s *Scanner) scanRawString() {
-	ch := s.next() // read character after '`'
-	for ch != '`' {
-		if ch < 0 {
-			s.error("literal not terminated")
-			return
-		}
-		ch = s.next()
-	}
-}
-
 func (s *Scanner) scanComment(ch rune) rune {
 	// ch == '/' || ch == '*'
 	if ch == '/' {
@@ -710,9 +699,8 @@ func (s *Scanner) Scan() []rune {
 				tok = TokComment
 			}
 		case '`':
-			if s.Mode&ScanRawStrings != 0 {
-				s.scanRawString()
-				tok = TokString
+			if s.Mode&ScanStringFlags != 0 {
+				tok = TokStringFlag
 			}
 			ch = s.next()
 		default:
