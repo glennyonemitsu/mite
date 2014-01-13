@@ -124,6 +124,9 @@ func (p *Parser) processToken(tok rune, text string) {
 		n := p.popNode()
 		p.output += n.OpenString()
 		p.output += n.CloseString()
+		n = p.popNode()
+		p.output += n.OpenString()
+		p.output += n.CloseString()
 		p.node = p.newNode()
 		p.pushNode(p.node)
 	case TokNodent:
@@ -276,40 +279,14 @@ func (p *Parser) processToken(tok rune, text string) {
 			p.node.text += text
 		}
 	case TokNewLine:
-		// up to this point a node has been constructed but not appended to the
-		// output
-		/*
-		if p.isDedent {
-			// for dedents, pop off the stack and close the node
-			for p.dedentCount > 0 {
-				p.closeLastNode()
-				p.dedentCount -= 1
-			}
-			p.isStringFlag = false
-		}
-		*/
-		/*
-		if p.isDedent || !p.isIndent {
-			// closing one more time because this new node replaces the top node in the
-			// stack for dedents or siblings (non indent)
-			p.closeLastNode()
-		}
-		p.outputNode(p.node)
-		p.pushNode(p.node)
-		*/
-
 		// reset
-		//p.node = p.newNode()
 		p.isIndent = false
 		p.isDedent = false
 		p.isAttr = false
 		p.attrName = ""
 		p.attrValue = ""
+		p.attrAssigned = false
 	case TokEOF:
-		// since p.node is never on the stack until TokNewLine we push to the stack
-		// in this scenario
-		//p.pushNode(p.node)
-		//p.outputNode(p.node)
 		// close the remaining nodes in the stack 
 		for len(p.stack) > 0 {
 			lastNode := p.popNode()
