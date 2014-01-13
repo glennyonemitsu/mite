@@ -66,6 +66,7 @@ func (n *Node) OpenString() string {
 		output += n.attrString
 		output += n.text
 		n.attrString = ""
+		n.text = ""
 	}
 	return output
 }
