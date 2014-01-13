@@ -661,8 +661,9 @@ func (s *Scanner) Scan() []rune {
 				ch = s.next()
 			}
 		case '\n', '\r':
+			ch = s.next()
 			if s.Mode&ScanNewLines != 0 {
-				s.scanNewLine(ch)
+				ch = s.scanNewLine(ch)
 				tok = TokNewLine
 
 				// prepare for new indent/dedent calculation
@@ -674,7 +675,6 @@ func (s *Scanner) Scan() []rune {
 				s.indentLevel = -1
 				s.indentChecked = false
 			}
-			ch = s.next()
 		case '"', '\'':
 			if s.Mode&ScanStrings != 0 {
 				s.scanString(ch)
