@@ -26,6 +26,7 @@ var NodeTypeString = map[NodeType]string {
 
 type Node struct {
 	Type NodeType
+	parent *Node
 
 	// were tags printed out? important to know if NodeText follows and needs
 	// to append more text

@@ -104,6 +104,8 @@ func (p *Parser) popNode() *Node {
 }
 
 func (p *Parser) pushNode(n *Node) {
+	ln := p.lastNode()
+	n.parent = ln
 	p.stack = append(p.stack, n)
 }
 
@@ -153,10 +155,13 @@ func (p *Parser) processToken(tok rune, text string) {
 		case NodeText:
 		default:
 			// replace top of stack with new node (pop then push)
-			n := p.popNode()
+			n := p.lastNode()
 			p.output += n.OpenString()
 			p.trimOutput()
-			p.output += n.CloseString()
+			if n.parent.Type != NodeRoot {
+				p.output += n.CloseString()
+				p.popNode()
+			}
 			p.node = p.newNode()
 			p.pushNode(p.node)
 		}
