@@ -13,7 +13,7 @@ Example:
                     thanks to the backtick in an indented "tag"
 
 
-Output (indented for display):
+Output with indentation for display. Tags in real output are collapsed:
 
     <html>
         <body>
