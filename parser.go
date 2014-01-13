@@ -158,10 +158,8 @@ func (p *Parser) processToken(tok rune, text string) {
 			n := p.lastNode()
 			p.output += n.OpenString()
 			p.trimOutput()
-			if n.parent.Type != NodeRoot {
-				p.output += n.CloseString()
-				p.popNode()
-			}
+			p.output += n.CloseString()
+			p.popNode()
 			p.node = p.newNode()
 			p.pushNode(p.node)
 		}
