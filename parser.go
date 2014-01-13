@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 )
 
 type Parser struct {
@@ -24,7 +25,6 @@ type Parser struct {
 
 	isIndent bool
 	isDedent bool
-	dedentCount int
 
 	// flag indicates we are still checking for attribute assignments
 	isAttr bool
@@ -56,7 +56,6 @@ func (p *Parser) Output() string {
 	p.attrName = ""
 	p.attrValue = ""
 	p.attrAssigned = false
-	p.dedentCount = 0
 
 	for {
 		tokens = p.Scanner.Scan()
@@ -76,6 +75,10 @@ func (p *Parser) Output() string {
 		}
 	}
 	return p.output
+}
+
+func (p *Parser) trimOutput() {
+	p.output = strings.TrimSpace(p.output)
 }
 
 func (p *Parser) newNode() *Node {
@@ -101,32 +104,39 @@ func (p *Parser) popNode() *Node {
 }
 
 func (p *Parser) pushNode(n *Node) {
-	ln := p.lastNode()
-	n.parent = ln
 	p.stack = append(p.stack, n)
 }
 
+func (p *Parser) dedentFromStack() {
+	n := p.lastNode()
+	if n != nil && n.Type != NodeRoot {
+		p.output += n.OpenString()
+		p.trimOutput()
+		p.output += n.CloseString()
+		p.popNode()
+	}
+}
+
 func (p *Parser) processToken(tok rune, text string) {
-	switch tok {
 	// indent/dedent/nodent is the first place to look to see if new nodes need
 	// to be made. checks are for parent node being certain types like NodeText
 	// or NodeComment
+	switch tok {
 	case TokIndent:
 		p.isIndent = true
 		p.isDedent = false
-		p.output += p.node.OpenString()
-		p.node = p.newNode()
-		p.pushNode(p.node)
+		if p.node.Type != NodeText {
+			p.output += p.node.OpenString()
+			p.node = p.newNode()
+			p.pushNode(p.node)
+		}
 	case TokDedent:
 		p.isIndent = false
 		p.isDedent = true
-		p.dedentCount += 1
-		n := p.popNode()
-		p.output += n.OpenString()
-		p.output += n.CloseString()
-		n = p.popNode()
-		p.output += n.OpenString()
-		p.output += n.CloseString()
+		p.dedentFromStack()
+		if p.node.Type != NodeText {
+			p.dedentFromStack()
+		}
 		p.node = p.newNode()
 		p.pushNode(p.node)
 	case TokNodent:
@@ -141,11 +151,25 @@ func (p *Parser) processToken(tok rune, text string) {
 			// replace top of stack with new node (pop then push)
 			n := p.popNode()
 			p.output += n.OpenString()
+			p.trimOutput()
 			p.output += n.CloseString()
 			p.node = p.newNode()
 			p.pushNode(p.node)
 		}
+	}
 
+	if p.node.Type == NodeText && tok != TokDedent {
+		if tok != TokIndent {
+			if tok == TokNewLine {
+				p.node.text += " "
+			} else if tok != TokWhitespace || p.node.text != "" {
+				p.node.text += text
+			}
+		}
+		return
+	}
+
+	switch tok {
 	case TokWord, TokComma:
 		switch p.node.Type {
 		case NodeNil:
@@ -248,25 +272,12 @@ func (p *Parser) processToken(tok rune, text string) {
 			} else if p.node.text != "" {
 				p.node.text += text
 			}
-		case NodeText:
-			if p.node.text != "" {
-				p.node.text += text
-			}
 		}
 	case TokStringFlag:
 		switch p.node.Type {
 		case NodeNil:
 			// new node, but indent indicates continue with text of previous node
-			if p.isIndent {
-				p.node = p.popNode()
-				p.node.text += " "
-			} else if !p.isIndent && !p.isDedent {
-				p.node = p.popNode()
-				p.node.text += " "
-				p.node.text += text
-			} else {
-				p.node.Type = NodeText
-			}
+			p.node.Type = NodeText
 		case NodeTag:
 			if p.isAttr {
 				p.node.text += p.node.attrString
@@ -275,8 +286,6 @@ func (p *Parser) processToken(tok rune, text string) {
 				p.node.text += text
 			}
 			p.isAttr = false
-		case NodeText:
-			p.node.text += text
 		}
 	case TokNewLine:
 		// reset
@@ -290,8 +299,11 @@ func (p *Parser) processToken(tok rune, text string) {
 		// close the remaining nodes in the stack 
 		for len(p.stack) > 0 {
 			lastNode := p.popNode()
+			p.trimOutput()
 			p.output += lastNode.CloseString()
 		}
+	// nop
+	case TokIndent, TokDedent, TokNodent:
 	default:
 		if !p.isAttr {
 			p.node.text += text

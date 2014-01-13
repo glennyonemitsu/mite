@@ -27,8 +27,6 @@ var NodeTypeString = map[NodeType]string {
 type Node struct {
 	Type NodeType
 
-	parent *Node
-
 	// were tags printed out? important to know if NodeText follows and needs
 	// to append more text
 	opened bool
@@ -82,12 +80,12 @@ func (n *Node) CloseString() string {
 
 func (n *Node) Debug() string {
 	output := ""
-	output += fmt.Sprintf("[Type: %s]", n.TypeString())
-	output += fmt.Sprintf("[opened: %t]", n.opened)
-	output += fmt.Sprintf("[closed: %t]", n.closed)
-	output += fmt.Sprintf("[tag: %s]", n.tag)
-	output += fmt.Sprintf("[attrs: %s]", n.attrs)
-	output += fmt.Sprintf("[text: %s]", n.text)
-	output += fmt.Sprintf("[attrString: %s]", n.attrString)
+	output += fmt.Sprintf("[Type:%s]", n.TypeString())
+	output += fmt.Sprintf("[opened:%t]", n.opened)
+	output += fmt.Sprintf("[closed:%t]", n.closed)
+	output += fmt.Sprintf("[tag:%s]", n.tag)
+	output += fmt.Sprintf("[attrs:%s]", n.attrs)
+	output += fmt.Sprintf("[text(%d):%s]", len(n.text), n.text)
+	output += fmt.Sprintf("[attrString:%s]", n.attrString)
 	return output
 }
