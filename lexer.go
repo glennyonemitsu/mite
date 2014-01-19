@@ -7,41 +7,14 @@ import (
 	"unicode"
 )
 
-// A source position is represented by a Position value.
-// A position is valid if Line > 0.
-type Position struct {
-	Filename string // filename, if any
-	Offset   int    // byte offset, starting at 0
-	Line     int    // line number, starting at 1
-	Column   int    // column number, starting at 1 (character count per line)
-}
-
-func (pos *Position) IsValid() bool {
-	return pos.Line > 0
-}
-
-func (pos Position) String() string {
-	s := pos.Filename
-	if pos.IsValid() {
-		if s != "" {
-			s += ":"
-		}
-		s += fmt.Sprintf("%d:%d", pos.Line, pos.Column)
-	}
-	if s == "" {
-		s = "???"
-	}
-	return s
-}
-
 // A Lexer implements reading of Unicode characters and tokens from an io.Reader.
 type Lexer struct {
 	src string
 	reader *strings.Reader
 	pos Position
 
-	// One character look-ahead
-	ch rune // character before current offset
+	lexemes []*Lexeme
+	tokens []*Token
 
 	// Error is called for each error encountered. If no Error
 	// function is set, the error is reported to os.Stderr.
@@ -58,17 +31,14 @@ func (l *Lexer) Init(src, filename string) *Lexer {
 	l.src = src
 	l.reader = strings.NewReader(src)
 
+	l.lexemes = make([]*Lexeme, 0)
+	l.tokens = make([]*Token, 0)
+
 	l.pos = Position{}
 	l.pos.Filename = filename
-	l.pos.Offset = 0
 	l.pos.Line = 1
-
-	// initialize one character look-ahead
-	l.ch = l.Next()
-	if l.ch == '\uFEFF' {
-		l.ch = l.Next() // ignore BOM
-	}
 	l.pos.Column = 0
+	l.pos.Offset = 0
 
 	// initialize public fields
 	l.Error = nil
@@ -84,67 +54,83 @@ func (l *Lexer) Init(src, filename string) *Lexer {
 func (l *Lexer) Next() rune {
 	ch, width, err := l.reader.ReadRune()
 	if err != nil {
-		l.error(err.Error())
+		if err.Error() != "EOF" {
+			l.error(err.Error())
+		}
 	}
 	l.pos.Offset += width
 	l.pos.Column += 1
-	l.ch = ch
 	return ch
 }
 
 func (l *Lexer) Peek() rune {
-	return l.ch
+	ch, _, _ := l.reader.ReadRune()
+	if ch != 0 { // EOF
+		l.reader.UnreadRune()
+	}
+	return ch
 }
 
 func (l *Lexer) error(msg string) {
 	l.ErrorCount++
 	if l.Error != nil {
 		l.Error(l, msg)
-		return
+	} else {
+		fmt.Fprintf(os.Stderr, "lexer error: %s\n", msg)
 	}
-	fmt.Fprintf(os.Stderr, "lexer error: %s\n", msg)
+}
+
+func (l *Lexer) scan() {
+	var lex *Lexeme
+	if len(l.lexemes) == 0 {
+		for {
+			lex = l.ScanLexeme()
+			l.lexemes = append(l.lexemes, lex)
+			if lex.Type == LexEOF || lex.Type == LexError {
+				break
+			}
+		}
+	}
 }
 
 // Scan reads the next token or Unicode character from source and returns it.
 // It returns EOF at the end of the source. It reports scanner errors (read and
 // token errors) by calling l.Error, if not nil; otherwise it prints an error
 // message to os.Stderr.
-func (l *Lexer) Scan() *Token {
-	tok := new(Token)
-	tok.Pos = l.pos
+func (l *Lexer) scanLexeme() *Lexeme {
+	lex := new(Lexeme)
+	lex.Pos = l.pos
 
 	ch := l.Peek()
 	offsetStart := l.pos.Offset
 
 	switch {
 	case unicode.IsLetter(ch) || ch == '_':
-		tok.Type = TokWord
-		ch = l.scanWord()
+		lex.Type = LexWord
+		l.scanWord()
 	case isDecimal(ch):
-		tokType, ch := l.scanNumber(ch)
-		tok.Type = tokType
+		lex.Type = l.scanNumber(ch)
 	default:
 		switch ch {
 		case '=':
-			tok.Type = TokAssign
-			ch = l.Next()
+			lex.Type = LexAssign
+			l.Next()
 		case ',':
-			tok.Type = TokComma
-			ch = l.Next()
+			lex.Type = LexComma
+			l.Next()
 		case ' ', '\t':
-			tok.Type = TokWhitespace
+			lex.Type = LexWhitespace
 			l.scanWhitespace()
 		case '\n', '\r':
-			tok.Type = TokNewLine
+			lex.Type = LexNewLine
 			l.scanNewLine(ch)
 		case '"', '\'':
+			lex.Type = LexString
 			l.scanString(ch)
-			tok.Type = TokString
-			ch = l.Next()
 		case '.':
 			ch = l.Next()
 			if isDecimal(ch) {
-				tok.Type = TokFloat
+				lex.Type = LexFloat
 				ch = l.scanMantissa(ch)
 				ch = l.scanExponent(ch)
 			}
@@ -152,34 +138,41 @@ func (l *Lexer) Scan() *Token {
 			ch = l.Next()
 			if ch == '/' || ch == '*' {
 				ch = l.scanComment(ch)
-				tok.Type = TokComment
+				lex.Type = LexComment
 			}
 		case '`':
-			tok.Type = TokStringFlag
+			lex.Type = LexStringFlag
 			l.Next()
+		case 0: // EOF
+			lex.Type = LexEOF
 		default:
 			l.Next()
 		}
 	}
 
-	offsetEnd := l.pos.Offset
-	tok.Data = l.src[offsetStart:offsetEnd]
-	return tok
+	if lex.Type != LexEOF {
+		offsetEnd := l.pos.Offset
+		lex.Data = l.src[offsetStart:offsetEnd]
+	}
+	return lex
 }
 
 
 // Following are scan<FOO> methods. These must all call l.Next() enough that
 // the l.pos.Offset value is at the end of the token. For example if the source
 // is `foo bar baz` and current offset is 4, scanWord will end with the 
-// l.pos.Offset at 7. It is safe to assume l.ch (or l.Peek()) always is the
-// first rune for the scan, and the very least at least one l.Next() has to be
-// made.
-func (l *Lexer) scanWord() rune {
-	ch := l.Next() // read character after first '_' or letter
-	for ch == '_' || unicode.IsLetter(ch) || unicode.IsDigit(ch) {
-		ch = l.Next()
+// l.pos.Offset at 7. It is safe to assume l.Peek() is always the first rune for
+// the scan, and the very least at least one l.Next() has to be made. Scanning
+// methods should use l.Peek() liberally.
+func (l *Lexer) scanWord() {
+	for {
+		ch := l.Peek()
+		if ch == '_' || unicode.IsLetter(ch) || unicode.IsDigit(ch) {
+			ch = l.Next()
+		} else {
+			break
+		}
 	}
-	return ch
 }
 
 func digitVal(ch rune) int {
@@ -221,7 +214,7 @@ func (l *Lexer) scanExponent(ch rune) rune {
 	return ch
 }
 
-func (l *Lexer) scanNumber(ch rune) (TokenType, rune) {
+func (l *Lexer) scanNumber(ch rune) LexemeType {
 	// isDecimal(ch)
 	if ch == '0' {
 		// int or float
@@ -250,14 +243,14 @@ func (l *Lexer) scanNumber(ch rune) (TokenType, rune) {
 				// float
 				ch = l.scanFraction(ch)
 				ch = l.scanExponent(ch)
-				return TokFloat, ch
+				return LexFloat
 			}
 			// octal int
 			if has8or9 {
 				l.error("illegal octal number")
 			}
 		}
-		return TokInt, ch
+		return LexInt
 	}
 	// decimal int or float
 	ch = l.scanMantissa(ch)
@@ -265,9 +258,9 @@ func (l *Lexer) scanNumber(ch rune) (TokenType, rune) {
 		// float
 		ch = l.scanFraction(ch)
 		ch = l.scanExponent(ch)
-		return TokFloat, ch
+		return LexFloat
 	}
-	return TokInt, ch
+	return LexInt
 }
 
 func (l *Lexer) scanDigits(ch rune, base, n int) rune {
@@ -347,14 +340,19 @@ func (l *Lexer) scanComment(ch rune) rune {
 }
 
 func (l *Lexer) scanWhitespace() {
-	ch := l.Next()
-	for ch == ' ' || ch == '\t' {
-		ch = l.Next()
+	for {
+		ch := l.Peek()
+		if ch == ' ' || ch == '\t' {
+			ch = l.Next()
+		} else {
+			break
+		}
 	}
 }
 
 func (l *Lexer) scanNewLine(ch rune) {
-	n := l.Next()
+	ch = l.Next()
+	n := l.Peek()
 	if ch == '\n' && n == '\r' {
 		l.Next()
 	} else if ch == '\r' && n == '\n' {
@@ -362,3 +360,13 @@ func (l *Lexer) scanNewLine(ch rune) {
 	}
 }
 
+func (l *Lexer) evaluate() {
+}
+
+func (l *Lexer) GetTokens() []*Token {
+	if len(l.tokens) == 0 {
+		l.scan()
+		l.evaluate()
+	}
+	return l.tokens
+}
