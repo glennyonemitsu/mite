@@ -9,7 +9,7 @@ type Parser struct {
 
 	debug bool
 
-	Scanner Scanner
+	Lexer *Lexer
 	output string
 
 	// node heirarchy stack
@@ -40,7 +40,7 @@ type Parser struct {
 }
 
 func (p *Parser) Output() string {
-	var tokens []rune
+	var tok *Token
 	var text string
 
 	p.node = p.newNode()
@@ -58,19 +58,16 @@ func (p *Parser) Output() string {
 	p.attrAssigned = false
 
 	for {
-		tokens = p.Scanner.Scan()
-		for _, token := range tokens {
-			text = p.Scanner.TokenText()
-			if p.debug {
-				fmt.Printf("[debug] token: [%s]\n", TokenString(token))
-				fmt.Printf("[debug] text:  [%s]\n", text)
-			}
-			p.processToken(token, text)
-			if p.debug {
-				fmt.Printf("[debug] node:  [%s]\n\n", p.node.Debug())
-			}
+		tok = p.Lexer.Scan()
+		if p.debug {
+			fmt.Printf("[debug] token: [%s]\n", tok)
+			fmt.Printf("[debug] text:  [%s]\n", text)
 		}
-		if tokens[0] == TokEOF {
+		p.processToken(tok)
+		if p.debug {
+			fmt.Printf("[debug] node:  [%s]\n\n", p.node.Debug())
+		}
+		if tok.Type == TokEOF {
 			break
 		}
 	}
@@ -123,11 +120,11 @@ func (p *Parser) dedentFromStack() {
 	}
 }
 
-func (p *Parser) processToken(tok rune, text string) {
+func (p *Parser) processToken(tok *Token) {
 	// indent/dedent/nodent is the first place to look to see if new nodes need
 	// to be made. checks are for parent node being certain types like NodeText
 	// or NodeComment
-	switch tok {
+	switch tok.Type {
 	case TokIndent:
 		p.isIndent = true
 		p.isDedent = false

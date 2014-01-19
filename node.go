@@ -13,6 +13,7 @@ const (
 	NodeText
 	NodeComment
 	NodeDoctype
+	NodeFunc
 )
 
 var NodeTypeString = map[NodeType]string {
