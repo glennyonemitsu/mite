@@ -40,10 +40,10 @@ type Parser struct {
 }
 
 func (p *Parser) BuildTree() string {
+	return ""
 }
 
 func (p *Parser) Output() string {
-	var tok *Token
 
 	p.node = p.newNode()
 	p.node.Type = NodeRoot
@@ -59,14 +59,14 @@ func (p *Parser) Output() string {
 	p.attrValue = ""
 	p.attrAssigned = false
 
-	for {
-		tok = p.Lexer.Scan()
+	tokens := p.Lexer.GetTokens()
+	for _, tok := range tokens {
 		if p.Debug {
 			fmt.Printf("[debug] token: [%s]\n", tok.Debug())
 		}
 		p.processToken(tok)
 		if p.Debug {
-			fmt.Printf("[debug] node:  [%s]\n\n", p.node.Debug())
+			//fmt.Printf("[debug] node:  [%s]\n\n", p.node.Debug())
 		}
 		if tok.Type == TokEOF {
 			break
@@ -102,8 +102,6 @@ func (p *Parser) popNode() *Node {
 }
 
 func (p *Parser) pushNode(n *Node) {
-	ln := p.lastNode()
-	n.parent = ln
 	p.stack = append(p.stack, n)
 }
 
@@ -125,18 +123,18 @@ func (p *Parser) processToken(tok *Token) {
 	if p.node.Type == NodeText {
 		if tok.Type == TokNewLine {
 			p.node.text += " "
-		} else if tok.Type != TokWhitespace || p.node.text != "" {
-			p.node.text += tok.Data
+		} else if p.node.text != "" {
+			p.node.text += tok.Value
 		}
 		return
 	}
 
 	switch tok.Type {
-	case TokWord, TokComma:
+	case TokIdent, TokComma:
 		switch p.node.Type {
 		case NodeNil:
 			p.node.Type = NodeTag
-			p.node.tag = tok.Data
+			p.node.tag = tok.Value
 			// found the tag, now check for attributes
 			p.isAttr = true
 			p.attrAssigned = false
@@ -145,9 +143,9 @@ func (p *Parser) processToken(tok *Token) {
 				if p.attrAssigned {
 					if _, found := p.node.attrs[p.attrName]; found {
 						p.node.attrs[p.attrName] += " "
-						p.node.attrs[p.attrName] += tok.Data
+						p.node.attrs[p.attrName] += tok.Value
 					} else {
-						p.node.attrs[p.attrName] = tok.Data
+						p.node.attrs[p.attrName] = tok.Value
 					}
 
 					// reset to look for a new attribute assignment
@@ -156,11 +154,11 @@ func (p *Parser) processToken(tok *Token) {
 					p.attrAssigned = false
 					p.node.attrString = ""
 				} else if p.attrName == "" {
-					p.node.attrString += tok.Data
-					p.attrName = tok.Data
+					p.node.attrString += tok.Value
+					p.attrName = tok.Value
 				} else {
 					p.node.text += p.node.attrString
-					p.node.text += tok.Data
+					p.node.text += tok.Value
 					p.node.attrString = ""
 					p.isAttr = false
 					p.attrAssigned = false
@@ -168,7 +166,7 @@ func (p *Parser) processToken(tok *Token) {
 					p.attrValue = ""
 				}
 			} else {
-				p.node.text += tok.Data
+				p.node.text += tok.Value
 			}
 		}
 	case TokString:
@@ -178,9 +176,9 @@ func (p *Parser) processToken(tok *Token) {
 				if p.attrAssigned {
 					if _, found := p.node.attrs[p.attrName]; found {
 						p.node.attrs[p.attrName] += " "
-						p.node.attrs[p.attrName] += tok.Data[1:len(tok.Data)-1]
+						p.node.attrs[p.attrName] += tok.Value[1:len(tok.Value)-1]
 					} else {
-						p.node.attrs[p.attrName] = tok.Data[1:len(tok.Data)-1]
+						p.node.attrs[p.attrName] = tok.Value[1:len(tok.Value)-1]
 					}
 
 					// reset to look for a new attribute assignment
@@ -191,7 +189,7 @@ func (p *Parser) processToken(tok *Token) {
 				} else if p.attrName != "" {
 					// TODO using string in attrName shouldn't be allowed
 					p.node.text += p.node.attrString
-					p.node.text += tok.Data[1:len(tok.Data)-1]
+					p.node.text += tok.Value[1:len(tok.Value)-1]
 					p.node.attrString = ""
 					p.isAttr = false
 					p.attrName = ""
@@ -199,10 +197,10 @@ func (p *Parser) processToken(tok *Token) {
 					p.attrAssigned = false
 				}
 			} else {
-				p.node.text += tok.Data
+				p.node.text += tok.Value
 			}
 		case NodeText:
-			p.node.text += tok.Data
+			p.node.text += tok.Value
 		}
 	case TokAssign:
 		switch p.node.Type {
@@ -210,7 +208,7 @@ func (p *Parser) processToken(tok *Token) {
 			if p.isAttr {
 				if p.attrName != "" && p.attrValue == "" {
 					p.attrAssigned = true
-					p.node.attrString += tok.Data
+					p.node.attrString += tok.Value
 				}
 				if p.attrName == "" || p.attrValue != "" {
 					p.attrAssigned = false
@@ -219,21 +217,10 @@ func (p *Parser) processToken(tok *Token) {
 					p.node.attrString = ""
 				}
 			} else {
-				p.node.text += tok.Data
+				p.node.text += tok.Value
 			}
 		case NodeText:
-			p.node.text += tok.Data
-		}
-	case TokWhitespace:
-		switch p.node.Type {
-		case NodeTag:
-			if p.isAttr && p.node.attrString != "" {
-				p.node.attrString += tok.Data
-
-			// skip initial whitespace for text
-			} else if p.node.text != "" {
-				p.node.text += tok.Data
-			}
+			p.node.text += tok.Value
 		}
 	case TokStringFlag:
 		switch p.node.Type {
@@ -245,7 +232,7 @@ func (p *Parser) processToken(tok *Token) {
 				p.node.text += p.node.attrString
 				p.node.attrString = ""
 			} else {
-				p.node.text += tok.Data
+				p.node.text += tok.Value
 			}
 			p.isAttr = false
 		}
@@ -267,7 +254,7 @@ func (p *Parser) processToken(tok *Token) {
 	// nop
 	default:
 		if !p.isAttr {
-			p.node.text += tok.Data
+			p.node.text += tok.Value
 		}
 	}
 }

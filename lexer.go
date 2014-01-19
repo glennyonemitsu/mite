@@ -7,11 +7,14 @@ import (
 	"unicode"
 )
 
+const tabIndentValue = 8
+
 // A Lexer implements reading of Unicode characters and tokens from an io.Reader.
 type Lexer struct {
 	src string
 	reader *strings.Reader
 	pos Position
+	tabIndentValue int
 
 	lexemes []*Lexeme
 	tokens []*Token
@@ -30,6 +33,7 @@ type Lexer struct {
 func (l *Lexer) Init(src, filename string) *Lexer {
 	l.src = src
 	l.reader = strings.NewReader(src)
+	l.tabIndentValue = tabIndentValue
 
 	l.lexemes = make([]*Lexeme, 0)
 	l.tokens = make([]*Token, 0)
@@ -84,7 +88,7 @@ func (l *Lexer) scan() {
 	var lex *Lexeme
 	if len(l.lexemes) == 0 {
 		for {
-			lex = l.ScanLexeme()
+			lex = l.scanLexeme()
 			l.lexemes = append(l.lexemes, lex)
 			if lex.Type == LexEOF || lex.Type == LexError {
 				break
@@ -93,7 +97,7 @@ func (l *Lexer) scan() {
 	}
 }
 
-// Scan reads the next token or Unicode character from source and returns it.
+// scanLexeme reads the next token or Unicode character from source and returns it.
 // It returns EOF at the end of the source. It reports scanner errors (read and
 // token errors) by calling l.Error, if not nil; otherwise it prints an error
 // message to os.Stderr.
@@ -124,6 +128,8 @@ func (l *Lexer) scanLexeme() *Lexeme {
 		case '\n', '\r':
 			lex.Type = LexNewLine
 			l.scanNewLine(ch)
+			l.pos.Line += 1
+			l.pos.Column = 0
 		case '"', '\'':
 			lex.Type = LexString
 			l.scanString(ch)
@@ -152,7 +158,7 @@ func (l *Lexer) scanLexeme() *Lexeme {
 
 	if lex.Type != LexEOF {
 		offsetEnd := l.pos.Offset
-		lex.Data = l.src[offsetStart:offsetEnd]
+		lex.Value = l.src[offsetStart:offsetEnd]
 	}
 	return lex
 }
@@ -360,7 +366,120 @@ func (l *Lexer) scanNewLine(ch rune) {
 	}
 }
 
+func (l *Lexer) pushToken(token *Token) {
+	if token != nil {
+		l.tokens = append(l.tokens, token)
+	}
+}
+
+func (l *Lexer) pushTokenType(t TokenType) {
+	token := new(Token)
+	token.Type = t
+	l.pushToken(token)
+}
+
 func (l *Lexer) evaluate() {
+	// stack of indentation levels
+	indents := make([]int, 0)
+	// nested bracket level
+	//brackets := 0
+	// grabbing all other lexemes as strings, usually after attribute assignment
+	textMode := false
+	firstWord := true
+	newLine := true
+
+	var token *Token
+	var lastToken *Token // only use when needed (ex. flattening newlines)
+	indents = append(indents, 0)
+
+	for _, lex := range l.lexemes {
+		switch lex.Type {
+		case LexEOF:
+			l.pushToken(token)
+			lastToken = token
+			token = nil
+			l.pushTokenType(TokEOF)
+		case LexError:
+		case LexNull:
+		case LexWord:
+			if firstWord {
+				l.pushToken(token)
+				token = new(Token)
+				token.Type = TokIdent
+				token.Value = lex.Value
+				token.Pos = lex.Pos
+				l.pushToken(token)
+				token = nil
+
+				firstWord = false
+			} else if textMode {
+				if token == nil {
+					token = new(Token)
+					token.Type = TokString
+					token.Value = lex.Value
+					token.Pos = lex.Pos
+				} else {
+					token.Value += lex.Value
+				}
+			} else {
+				l.pushToken(token)
+				token = new(Token)
+				token.Type = TokIdent
+				token.Value = lex.Value
+				token.Pos = lex.Pos
+				l.pushToken(token)
+				token = nil
+			}
+		case LexNumber:
+		case LexInt:
+		case LexFloat:
+		case LexString:
+			l.pushToken(token)
+			token = nil
+			l.pushTokenType(TokString)
+		case LexStringFlag:
+			l.pushToken(token)
+			token = nil
+			l.pushTokenType(TokStringFlag)
+		case LexComment:
+		case LexNewLine:
+		case LexLineContinue:
+			if textMode {
+				token.Value += lex.Value
+			}
+		case LexComma:
+			l.pushToken(token)
+			token = nil
+			l.pushTokenType(TokComma)
+		case LexWhitespace:
+			// determine indent level
+			if newLine {
+				indentValue := 0
+				lastIndentValue := indents[len(indents) - 1]
+				for ch := range lex.Value {
+					if ch == '\t' {
+						indentValue += l.tabIndentValue
+					} else if ch == ' ' {
+						indentValue += 1
+					}
+				}
+				if lastIndentValue > indentValue {
+					l.pushToken(token)
+					token = nil
+					l.pushTokenType(TokIndent)
+				} else if lastIndentValue < indentValue {
+					l.pushToken(token)
+					token = nil
+					l.pushTokenType(TokDedent)
+				}
+				newLine = false
+			}
+		case LexAssign:
+			l.pushToken(token)
+			token = nil
+			l.pushTokenType(TokAssign)
+		}
+	}
 }
 
 func (l *Lexer) GetTokens() []*Token {

@@ -10,42 +10,39 @@ type TokenType int
 const (
 	TokEOF TokenType = -(iota + 1)
 	TokError
-	TokNull
-	TokWord
+	TokIdent
+	TokString
 	TokNumber
 	TokInt
 	TokFloat
-	TokString
 	TokStringFlag
 	TokComment
 	TokNewLine
-	TokLineContinue
+	TokIndent
+	TokDedent
 	TokComma
-	TokWhitespace
 	TokAssign
 )
 
 var tokenString = map[TokenType]string{
 	TokEOF:      "EOF",
 	TokError:     "Error",
-	TokNull:     "Null",
-	TokWord:     "Word",
+	TokIdent:     "Identifier",
+	TokString:    "String",
 	TokInt:       "Int",
 	TokFloat:     "Float",
-	TokString:    "String",
 	TokStringFlag: "StringFlag",
 	TokComment:   "Comment",
 	TokNewLine:   "NewLine",
-	TokLineContinue:   "LineContinue",
-	TokWhitespace:	"Whitespace",
+	TokIndent: "Indent",
+	TokDedent: "Dedent",
 	TokAssign:	"Assign",
 	TokComma:	"Comma",
 }
 
 type Token struct {
 	Type TokenType
-	Data string
-	Indent int
+	Value string
 	Pos Position
 }
 
@@ -54,14 +51,13 @@ func (t *Token) TypeString() string {
 }
 
 func (t *Token) String() string {
-	return t.Data
+	return t.Value
 }
 
 func (t *Token) Debug() string {
 	output := ""
 	output += fmt.Sprintf("[Type:%s]", t.TypeString())
-	output += fmt.Sprintf("[Data:%s]", t.String())
-	output += fmt.Sprintf("[Indent:%d]", t.Indent)
+	output += fmt.Sprintf("[Value:%s]", t.Value)
 	output += fmt.Sprintf("[Pos.Filename:%s]", t.Pos.Filename)
 	output += fmt.Sprintf("[Pos.Offset:%d]", t.Pos.Offset)
 	output += fmt.Sprintf("[Pos.Line:%d]", t.Pos.Line)

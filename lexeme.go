@@ -44,8 +44,7 @@ var lexemeString = map[LexemeType]string{
 
 type Lexeme struct {
 	Type LexemeType
-	Data string
-	Indent int
+	Value string
 	Pos Position
 }
 
@@ -54,14 +53,13 @@ func (l *Lexeme) TypeString() string {
 }
 
 func (l *Lexeme) String() string {
-	return l.Data
+	return l.Value
 }
 
 func (l *Lexeme) Debug() string {
 	output := ""
 	output += fmt.Sprintf("[Type:%s]", l.TypeString())
-	output += fmt.Sprintf("[Data:%s]", l.String())
-	output += fmt.Sprintf("[Indent:%d]", l.Indent)
+	output += fmt.Sprintf("[Value:%s]", l.Value)
 	output += fmt.Sprintf("[Pos.Filename:%s]", l.Pos.Filename)
 	output += fmt.Sprintf("[Pos.Offset:%d]", l.Pos.Offset)
 	output += fmt.Sprintf("[Pos.Line:%d]", l.Pos.Line)
