@@ -16,6 +16,8 @@ type Lexer struct {
 	pos Position
 	tabIndentValue int
 
+	Debug bool
+
 	lexemes []*Lexeme
 	tokens []*Token
 
@@ -47,6 +49,7 @@ func (l *Lexer) Init(src, filename string) *Lexer {
 	// initialize public fields
 	l.Error = nil
 	l.ErrorCount = 0
+	l.Debug = false
 
 	return l
 }
@@ -372,9 +375,10 @@ func (l *Lexer) pushToken(token *Token) {
 	}
 }
 
-func (l *Lexer) pushTokenType(t TokenType) {
+func (l *Lexer) pushTokenType(t TokenType, pos Position) {
 	token := new(Token)
 	token.Type = t
+	token.Pos = pos
 	l.pushToken(token)
 }
 
@@ -387,19 +391,36 @@ func (l *Lexer) evaluate() {
 	textMode := false
 	firstWord := true
 	newLine := true
+	// some lexemes will require looking ahead and determining if any can be 
+	// skipped such as consecutive newlines.
+	skip := 0
 
 	var token *Token
-	var lastToken *Token // only use when needed (ex. flattening newlines)
+	//var lastToken *Token // only use when needed (ex. flattening newlines)
 	indents = append(indents, 0)
 
-	for _, lex := range l.lexemes {
+	for i, lex := range l.lexemes {
+		if l.Debug {
+			fmt.Printf("[debug] lexeme: [%s]\n", lex.Debug())
+		}
+		if skip > 0 {
+			skip -= 1
+			continue
+		}
 		switch lex.Type {
 		case LexEOF:
 			l.pushToken(token)
-			lastToken = token
-			token = nil
-			l.pushTokenType(TokEOF)
+			//lastToken = token
+			token = new(Token)
+			token.Type = TokEOF
+			token.Pos = lex.Pos
+			l.pushToken(token)
 		case LexError:
+			token = new(Token)
+			token.Type = TokError
+			token.Value = lex.Value
+			token.Pos = lex.Pos
+			l.pushToken(token)
 		case LexNull:
 		case LexWord:
 			if firstWord {
@@ -412,6 +433,7 @@ func (l *Lexer) evaluate() {
 				token = nil
 
 				firstWord = false
+				textMode = true
 			} else if textMode {
 				if token == nil {
 					token = new(Token)
@@ -436,13 +458,31 @@ func (l *Lexer) evaluate() {
 		case LexString:
 			l.pushToken(token)
 			token = nil
-			l.pushTokenType(TokString)
+			l.pushTokenType(TokString, l.pos)
 		case LexStringFlag:
 			l.pushToken(token)
 			token = nil
-			l.pushTokenType(TokStringFlag)
+			l.pushTokenType(TokStringFlag, l.pos)
 		case LexComment:
 		case LexNewLine:
+			if token != nil {
+				l.pushToken(token)
+				token = nil
+			}
+			l.pushTokenType(TokNewLine, l.pos)
+			textMode = false
+			firstWord = true
+			newLine = true
+			// keep looking ahead fo LexNewLine to flatten
+			nonNewLine := false
+			for j := 1; !nonNewLine; j += 1 {
+				nl := l.lexemes[i + j]
+				if nl.Type == LexNewLine {
+					skip += 1
+				} else {
+					nonNewLine = true
+				}
+			}
 		case LexLineContinue:
 			if textMode {
 				token.Value += lex.Value
@@ -450,7 +490,7 @@ func (l *Lexer) evaluate() {
 		case LexComma:
 			l.pushToken(token)
 			token = nil
-			l.pushTokenType(TokComma)
+			l.pushTokenType(TokComma, l.pos)
 		case LexWhitespace:
 			// determine indent level
 			if newLine {
@@ -466,18 +506,18 @@ func (l *Lexer) evaluate() {
 				if lastIndentValue > indentValue {
 					l.pushToken(token)
 					token = nil
-					l.pushTokenType(TokIndent)
+					l.pushTokenType(TokIndent, l.pos)
 				} else if lastIndentValue < indentValue {
 					l.pushToken(token)
 					token = nil
-					l.pushTokenType(TokDedent)
+					l.pushTokenType(TokDedent, l.pos)
 				}
 				newLine = false
 			}
 		case LexAssign:
 			l.pushToken(token)
 			token = nil
-			l.pushTokenType(TokAssign)
+			l.pushTokenType(TokAssign, l.pos)
 		}
 	}
 }
