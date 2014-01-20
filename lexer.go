@@ -409,8 +409,13 @@ func (l *Lexer) evaluate() {
 		}
 		switch lex.Type {
 		case LexEOF:
-			l.pushToken(token)
-			//lastToken = token
+			for len(indents) > 1 { // 1 since first element is 0 indent
+				token = new(Token)
+				token.Type = TokDedent
+				token.Pos = lex.Pos
+				l.pushToken(token)
+				indents = indents[0:len(indents)-1]
+			}
 			token = new(Token)
 			token.Type = TokEOF
 			token.Pos = lex.Pos
@@ -504,13 +509,14 @@ func (l *Lexer) evaluate() {
 					}
 				}
 				if lastIndentValue > indentValue {
-					l.pushToken(token)
-					token = nil
 					l.pushTokenType(TokIndent, l.pos)
 				} else if lastIndentValue < indentValue {
-					l.pushToken(token)
-					token = nil
-					l.pushTokenType(TokDedent, l.pos)
+					// keep popping indents
+					for lastIndentValue < indentValue {
+						l.pushTokenType(TokDedent, l.pos)
+						indents = indents[0:len(indents)-1]
+						lastIndentValue = indents[len(indents) - 1]
+					}
 				}
 				newLine = false
 			}

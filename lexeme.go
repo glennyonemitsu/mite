@@ -59,7 +59,15 @@ func (l *Lexeme) String() string {
 func (l *Lexeme) Debug() string {
 	output := ""
 	output += fmt.Sprintf("[Type:%s]", l.TypeString())
-	output += fmt.Sprintf("[Value:%s]", l.Value)
+	if l.Type == LexNewLine {
+		if l.Value == "\n" {
+			output += fmt.Sprintf("[Value:\\n]")
+		} else if l.Value == "\t" {
+			output += fmt.Sprintf("[Value:\\r]")
+		}
+	} else {
+		output += fmt.Sprintf("[Value:%s]", l.Value)
+	}
 	output += fmt.Sprintf("[Pos.Filename:%s]", l.Pos.Filename)
 	output += fmt.Sprintf("[Pos.Offset:%d]", l.Pos.Offset)
 	output += fmt.Sprintf("[Pos.Line:%d]", l.Pos.Line)
